@@ -237,12 +237,42 @@
         </div>
     </div>
 
-    <!-- Captura global de errores JS -->
+    <!-- Funciones críticas de Auth - bloque separado para garantizar disponibilidad -->
     <script>
         window.onerror = function(msg, src, line, col, err) {
             var d = document.getElementById('debug-msg');
-            if (d) { d.innerText = 'JS Error: ' + msg + ' (línea ' + line + ')'; d.classList.remove('hidden'); }
+            if (d) { d.innerText = 'Error: ' + msg + ' (L' + line + ')'; d.classList.remove('hidden'); }
         };
+
+        // loginWithGithub en bloque separado para que siempre esté definida
+        function loginWithGithub() {
+            var btn = document.getElementById('btn-github-login');
+            var debugEl = document.getElementById('debug-msg');
+            if (debugEl) debugEl.classList.add('hidden');
+
+            if (!window._supabase) {
+                if (debugEl) { debugEl.innerText = 'Error: Supabase no inicializado. Recarga la página.'; debugEl.classList.remove('hidden'); }
+                return;
+            }
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Conectando...';
+            }
+            window._supabase.auth.signInWithOAuth({
+                provider: 'github',
+                options: { redirectTo: window.location.origin + window.location.pathname }
+            }).then(function(res) {
+                if (res.error) {
+                    if (debugEl) { debugEl.innerText = 'Error: ' + res.error.message; debugEl.classList.remove('hidden'); }
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-brands fa-github text-xl mr-3"></i> Iniciar sesión con GitHub'; }
+                } else if (res.data && res.data.url) {
+                    window.location.href = res.data.url;
+                }
+            }).catch(function(err) {
+                if (debugEl) { debugEl.innerText = 'Error: ' + err.message; debugEl.classList.remove('hidden'); }
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-brands fa-github text-xl mr-3"></i> Iniciar sesión con GitHub'; }
+            });
+        }
     </script>
 
     <!-- Script Principal con Supabase -->
@@ -251,7 +281,8 @@
         const SUPABASE_URL = 'https://shhpnkdgtwuadurbrkvj.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoaHBua2RndHd1YWR1cmJya3ZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MTMzOTAsImV4cCI6MjEwNjE4OTM5MH0.Qg3n0jw351-ClV1FVJYNGVyx-BFT7jEqAE0Y_vuzE5Q';
         
-        let supabase = null;
+        window._supabase = null;
+        var supabase = null; // alias local
         let cars = [];
         let records = [];
         let currentTab = 'cars';
@@ -282,6 +313,7 @@
 
             try {
                 supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                window._supabase = supabase; // exponer globalmente para loginWithGithub
                 
                 // Listen for auth changes FIRST before checking session
                 supabase.auth.onAuthStateChange((_event, newSession) => {
