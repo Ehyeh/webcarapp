@@ -71,9 +71,10 @@
                 <h2 class="text-2xl font-bold text-slate-800 mb-2">WebCarApp</h2>
                 <p class="text-slate-500 text-sm mb-8">Inicia sesión para gestionar el mantenimiento de tus vehículos</p>
                 
-                <button id="btn-github-login" onclick="loginWithGithub()" class="w-full bg-[#24292F] hover:bg-[#1b1f23] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center transition-colors">
-                    <i class="fa-brands fa-github text-xl mr-3"></i>
-                    Iniciar sesión con GitHub
+                <button id="btn-github-login" onclick="loginWithGithub()" disabled
+                    class="w-full bg-[#24292F] hover:bg-[#1b1f23] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center transition-colors opacity-60 cursor-not-allowed">
+                    <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
+                    Cargando...
                 </button>
                 <div id="debug-msg" class="mt-4 text-xs text-red-500 text-center hidden"></div>
             </div>
@@ -352,9 +353,15 @@
                 switchTab('cars');
             } else {
                 document.getElementById('btn-logout').classList.add('hidden');
-                // Ocultar todas las vistas y mostrar solo login
-                document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
                 document.getElementById('view-login').classList.add('active');
+                // Habilitar el botón ahora que supabase está listo
+                var btn = document.getElementById('btn-github-login');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-60', 'cursor-not-allowed');
+                    btn.innerHTML = '<i class="fa-brands fa-github text-xl mr-3"></i> Iniciar sesión con GitHub';
+                }
             }
         }
         
