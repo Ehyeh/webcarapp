@@ -303,11 +303,14 @@
 
         // --- INICIALIZACIÓN ---
         async function init() {
+            // Chequeo 1: ¿Cargó la librería de Supabase del CDN?
+            if (typeof window.supabase === 'undefined' || typeof window.supabase.createClient !== 'function') {
+                document.getElementById('loader-text').innerHTML = '<span class="text-red-500 font-bold">Error: La librería de Supabase no cargó (fallo de CDN o red).</span>';
+                return;
+            }
+
             if (SUPABASE_URL === 'REEMPLAZA_CON_TU_SUPABASE_URL') {
-                document.getElementById('loader-text').innerHTML = `
-                    <span class="text-red-500 block mb-2 font-bold">¡Faltan credenciales!</span>
-                    Abre index.html y coloca tu URL y ANON KEY de Supabase.
-                `;
+                document.getElementById('loader-text').innerHTML = '<span class="text-red-500 block mb-2 font-bold">¡Faltan credenciales!</span>Abre index.html y coloca tu URL y ANON KEY de Supabase.';
                 return;
             }
 
@@ -332,7 +335,12 @@
 
             } catch (err) {
                 console.error(err);
-                document.getElementById('loader-text').innerText = "Error al conectar con Supabase: " + err.message;
+                document.getElementById('loader').style.display = 'none';
+                var d = document.getElementById('debug-msg');
+                if (d) { d.innerText = 'Error init: ' + err.message; d.classList.remove('hidden'); }
+                // Mostrar login view para que el usuario vea el error
+                document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+                document.getElementById('view-login').classList.add('active');
             }
         }
         
