@@ -73,7 +73,7 @@
                 
                 <button id="btn-github-login" onclick="loginWithGithub()" class="w-full bg-[#24292F] hover:bg-[#1b1f23] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center transition-colors">
                     <i class="fa-brands fa-github text-xl mr-3"></i>
-                    Continuar con GitHub
+                    Iniciar sesión con GitHub
                 </button>
                 <div id="debug-msg" class="mt-4 text-xs text-red-500 text-center hidden"></div>
             </div>
@@ -236,6 +236,14 @@
             </form>
         </div>
     </div>
+
+    <!-- Captura global de errores JS -->
+    <script>
+        window.onerror = function(msg, src, line, col, err) {
+            var d = document.getElementById('debug-msg');
+            if (d) { d.innerText = 'JS Error: ' + msg + ' (línea ' + line + ')'; d.classList.remove('hidden'); }
+        };
+    </script>
 
     <!-- Script Principal con Supabase -->
     <script>
