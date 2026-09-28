@@ -49,6 +49,9 @@
             <div id="header-stats" class="text-sm font-medium hidden">
                 Total: $<span id="total-cost">0.00</span>
             </div>
+            <button id="btn-logout" onclick="logout()" class="hidden bg-primary-700 hover:bg-primary-800 text-white p-2 rounded-full w-8 h-8 flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-arrow-right-from-bracket text-sm"></i>
+            </button>
         </div>
     </header>
 
@@ -57,6 +60,22 @@
         <div id="loader" class="absolute inset-0 bg-slate-50 z-20 flex flex-col items-center justify-center pt-20">
             <i class="fa-solid fa-circle-notch fa-spin text-4xl text-primary-600 mb-4"></i>
             <p class="text-slate-500 font-medium" id="loader-text">Conectando a Supabase...</p>
+        </div>
+
+        <!-- Login View -->
+        <div id="view-login" class="tab-content absolute inset-0 bg-slate-50 z-30 flex flex-col items-center justify-center p-6 h-screen">
+            <div class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-sm text-center border border-slate-100">
+                <div class="w-16 h-16 bg-primary-50 rounded-full flex items-center justify-center text-primary-600 mx-auto mb-4">
+                    <i class="fa-solid fa-car text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-800 mb-2">WebCarApp</h2>
+                <p class="text-slate-500 text-sm mb-8">Inicia sesión para gestionar el mantenimiento de tus vehículos</p>
+                
+                <button onclick="loginWithGithub()" class="w-full bg-[#24292F] hover:bg-[#1b1f23] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center transition-colors">
+                    <i class="fa-brands fa-github text-xl mr-3"></i>
+                    Continuar con GitHub
+                </button>
+            </div>
         </div>
 
         <!-- View: Vehículos -->
@@ -220,8 +239,8 @@
     <!-- Script Principal con Supabase -->
     <script>
         // ¡IMPORTANTE! INGRESA TUS CREDENCIALES DE SUPABASE AQUÍ
-        const SUPABASE_URL = 'REEMPLAZA_CON_TU_SUPABASE_URL';
-        const SUPABASE_ANON_KEY = 'REEMPLAZA_CON_TU_SUPABASE_ANON_KEY';
+        const SUPABASE_URL = 'https://shhpnkdgtwuadurbrkvj.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoaHBua2RndHd1YWR1cmJya3ZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MTMzOTAsImV4cCI6MjEwNjE4OTM5MH0.Qg3n0jw351-ClV1FVJYNGVyx-BFT7jEqAE0Y_vuzE5Q';
         
         let supabase = null;
         let cars = [];
@@ -240,6 +259,8 @@
             other: { label: 'Otro', icon: 'fa-clipboard', color: 'text-gray-600', bg: 'bg-gray-100' }
         };
 
+        let session = null;
+
         // --- INICIALIZACIÓN ---
         async function init() {
             if (SUPABASE_URL === 'REEMPLAZA_CON_TU_SUPABASE_URL') {
@@ -252,16 +273,69 @@
 
             try {
                 supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                await loadData();
+                
+                // Check current session
+                const { data: { session: currentSession } } = await supabase.auth.getSession();
+                session = currentSession;
+                
+                // Listen for auth changes
+                supabase.auth.onAuthStateChange((_event, newSession) => {
+                    session = newSession;
+                    handleAuthChange();
+                });
+                
+                await handleAuthChange();
                 document.getElementById('loader').style.display = 'none';
-                switchTab('cars');
             } catch (err) {
                 console.error(err);
                 document.getElementById('loader-text').innerText = "Error al conectar con Supabase.";
             }
         }
+        
+        async function handleAuthChange() {
+            if (session) {
+                document.getElementById('btn-logout').classList.remove('hidden');
+                document.getElementById('view-login').classList.remove('active');
+                await loadData();
+                switchTab('cars');
+            } else {
+                document.getElementById('btn-logout').classList.add('hidden');
+                switchTab('login');
+                // Ensure login view is active
+                document.getElementById('view-login').classList.add('active');
+            }
+        }
+        
+        async function loginWithGithub() {
+            try {
+                const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'github',
+                    options: {
+                        redirectTo: window.location.origin + window.location.pathname
+                    }
+                });
+                if (error) throw error;
+            } catch (error) {
+                alert('Error al iniciar sesión: ' + error.message);
+            }
+        }
+        
+        async function logout() {
+            try {
+                const { error } = await supabase.auth.signOut();
+                if (error) throw error;
+                cars = [];
+                records = [];
+            } catch (error) {
+                alert('Error al cerrar sesión: ' + error.message);
+            }
+        }
 
         async function loadData() {
+            if (!session) return;
+            
+            // Assume we want to filter by user_id if RLS is not fully strictly returning only user rows.
+            // If RLS is enabled, supabase will automatically filter.
             const [carsRes, recordsRes] = await Promise.all([
                 supabase.from('cars').select('*').order('created_at', { ascending: true }),
                 supabase.from('maintenance_records').select('*').order('date', { ascending: false })
@@ -399,6 +473,7 @@
             if (id) {
                 await supabase.from('cars').update(newCar).eq('id', id);
             } else {
+                newCar.user_id = session.user.id;
                 await supabase.from('cars').insert(newCar);
             }
             
@@ -579,6 +654,7 @@
             if (id) {
                 await supabase.from('maintenance_records').update(newRecord).eq('id', id);
             } else {
+                newRecord.user_id = session.user.id;
                 await supabase.from('maintenance_records').insert(newRecord);
             }
 
