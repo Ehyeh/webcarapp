@@ -71,10 +71,11 @@
                 <h2 class="text-2xl font-bold text-slate-800 mb-2">WebCarApp</h2>
                 <p class="text-slate-500 text-sm mb-8">Inicia sesión para gestionar el mantenimiento de tus vehículos</p>
                 
-                <button onclick="loginWithGithub()" class="w-full bg-[#24292F] hover:bg-[#1b1f23] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center transition-colors">
+                <button id="btn-github-login" onclick="loginWithGithub()" class="w-full bg-[#24292F] hover:bg-[#1b1f23] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center transition-colors">
                     <i class="fa-brands fa-github text-xl mr-3"></i>
                     Continuar con GitHub
                 </button>
+                <div id="debug-msg" class="mt-4 text-xs text-red-500 text-center hidden"></div>
             </div>
         </div>
 
@@ -309,24 +310,39 @@
             }
         }
         
+        function showDebug(msg) {
+            const el = document.getElementById('debug-msg');
+            if (el) { el.innerText = msg; el.classList.remove('hidden'); }
+            console.error('[WebCarApp]', msg);
+        }
+
         async function loginWithGithub() {
+            const btn = document.getElementById('btn-github-login');
+            const debugEl = document.getElementById('debug-msg');
+            if (debugEl) debugEl.classList.add('hidden');
+
             if (!supabase) {
-                alert('La aplicación aún está cargando. Espera un momento e intenta de nuevo.');
+                showDebug('Error: Supabase no está inicializado. Recarga la página.');
                 return;
             }
-            const btn = document.querySelector('#view-login button');
+
             btn.disabled = true;
             btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Conectando...';
+
             try {
-                const { error } = await supabase.auth.signInWithOAuth({
+                const { data, error } = await supabase.auth.signInWithOAuth({
                     provider: 'github',
                     options: {
                         redirectTo: window.location.origin + window.location.pathname
                     }
                 });
                 if (error) throw error;
+                // Si llegamos aquí sin redirigir, mostrar info
+                if (data && data.url) {
+                    window.location.href = data.url;
+                }
             } catch (error) {
-                alert('Error al iniciar sesión: ' + error.message);
+                showDebug('Error: ' + error.message);
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fa-brands fa-github text-xl mr-3"></i> Continuar con GitHub';
             }
