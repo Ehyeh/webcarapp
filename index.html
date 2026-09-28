@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WebCarApp - Mantenimiento de Vehículos</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Configuración de Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#e7f0ff',
+                            100: '#c5d9ff',
+                            500: '#2b5fff',
+                            600: '#1d47e0',
+                            700: '#1636b0',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #f8fafc; -webkit-tap-highlight-color: transparent; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .modal { display: none; }
+        .modal.active { display: flex; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased pb-20">
+
+    <!-- Header -->
+    <header class="bg-primary-600 text-white p-4 shadow-md sticky top-0 z-10">
+        <div class="max-w-lg mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center">
+                <i class="fa-solid fa-car-side mr-2"></i> WebCarApp
+            </h1>
+            <div id="header-stats" class="text-sm font-medium hidden">
+                Total: $<span id="total-cost">0.00</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-lg mx-auto p-4 relative">
+        <!-- Loader / Mensaje Supabase -->
+        <div id="loader" class="absolute inset-0 bg-slate-50 z-20 flex flex-col items-center justify-center pt-20">
+            <i class="fa-solid fa-circle-notch fa-spin text-4xl text-primary-600 mb-4"></i>
+            <p class="text-slate-500 font-medium" id="loader-text">Conectando a Supabase...</p>
+        </div>
+
+        <!-- View: Vehículos -->
+        <div id="view-cars" class="tab-content active">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Mis Vehículos</h2>
+            </div>
+            <div id="cars-container" class="space-y-4"></div>
+            <button onclick="openCarModal()" class="fixed bottom-24 right-6 md:right-auto md:left-[50%] md:ml-[180px] bg-primary-600 text-white rounded-full w-14 h-14 shadow-lg flex items-center justify-center text-2xl hover:bg-primary-700 transition-colors z-10">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+        </div>
+
+        <!-- View: Mantenimientos -->
+        <div id="view-maintenance" class="tab-content">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-xl font-bold">Mantenimientos</h2>
+            </div>
+            <div class="overflow-x-auto hide-scrollbar mb-4 -mx-4 px-4 py-1">
+                <div id="car-filters" class="flex space-x-2"></div>
+            </div>
+            <div id="records-container" class="space-y-4"></div>
+            <button onclick="openRecordModal()" class="fixed bottom-24 right-6 md:right-auto md:left-[50%] md:ml-[180px] bg-primary-600 text-white rounded-full w-14 h-14 shadow-lg flex items-center justify-center text-2xl hover:bg-primary-700 transition-colors z-10">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+        </div>
+
+        <!-- View: Aceite -->
+        <div id="view-oil" class="tab-content">
+            <h2 class="text-xl font-bold mb-4">Calculadora de Aceite</h2>
+            <div class="bg-white rounded-xl shadow-sm p-4 border border-slate-200 mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-2">Seleccionar Vehículo</label>
+                <select id="oil-car-select" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none" onchange="renderOilCalculator()"></select>
+            </div>
+            <div id="oil-calculator-content"></div>
+        </div>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="fixed bottom-0 w-full bg-white border-t border-slate-200 z-20 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+        <div class="max-w-lg mx-auto flex justify-around">
+            <button onclick="switchTab('cars')" id="tab-btn-cars" class="flex-1 py-3 text-center text-primary-600 font-medium">
+                <i class="fa-solid fa-car mb-1 text-lg block"></i><span class="text-xs">Vehículos</span>
+            </button>
+            <button onclick="switchTab('maintenance')" id="tab-btn-maintenance" class="flex-1 py-3 text-center text-slate-400 hover:text-primary-600 font-medium transition-colors">
+                <i class="fa-solid fa-wrench mb-1 text-lg block"></i><span class="text-xs">Mantenimientos</span>
+            </button>
+            <button onclick="switchTab('oil')" id="tab-btn-oil" class="flex-1 py-3 text-center text-slate-400 hover:text-primary-600 font-medium transition-colors">
+                <i class="fa-solid fa-droplet mb-1 text-lg block"></i><span class="text-xs">Aceite</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Modal Vehículo -->
+    <div id="car-modal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-end sm:items-center">
+        <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto transform transition-all">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold" id="car-modal-title">Nuevo Vehículo</h2>
+                <button onclick="closeModal('car-modal')" class="text-slate-500 hover:text-slate-700">
+                    <i class="fa-solid fa-times text-xl"></i>
+                </button>
+            </div>
+            <form id="car-form" onsubmit="saveCar(event)">
+                <input type="hidden" id="car-id">
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Nombre</label>
+                    <input type="text" id="car-name" required placeholder="Ej: Mi Honda" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Marca</label>
+                        <input type="text" id="car-make" placeholder="Ej: Honda" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Modelo</label>
+                        <input type="text" id="car-model" placeholder="Ej: Civic" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Año</label>
+                        <input type="number" id="car-year" min="1900" max="2100" placeholder="2020" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Placa</label>
+                        <input type="text" id="car-plate" placeholder="ABC-123" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Kilometraje Actual (km)</label>
+                    <input type="number" id="car-mileage" min="0" placeholder="50000" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Intervalo Aceite (km)</label>
+                    <input type="number" id="car-interval" required min="1000" value="5000" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                </div>
+                <button type="submit" id="btn-save-car" class="w-full bg-primary-600 text-white font-bold rounded-lg p-3 hover:bg-primary-700 transition-colors flex justify-center items-center">
+                    Guardar
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Mantenimiento -->
+    <div id="record-modal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-end sm:items-center">
+        <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto transform transition-all">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold" id="record-modal-title">Nuevo Mantenimiento</h2>
+                <button onclick="closeModal('record-modal')" class="text-slate-500 hover:text-slate-700">
+                    <i class="fa-solid fa-times text-xl"></i>
+                </button>
+            </div>
+            <form id="record-form" onsubmit="saveRecord(event)">
+                <input type="hidden" id="record-id">
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Vehículo</label>
+                    <select id="record-car" required class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none"></select>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Tipo de Servicio</label>
+                    <select id="record-type" required class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                        <option value="oil_change">Cambio de Aceite</option>
+                        <option value="tire_rotation">Rotación de Llantas</option>
+                        <option value="brake_service">Servicio de Frenos</option>
+                        <option value="battery">Batería</option>
+                        <option value="filter_change">Cambio de Filtros</option>
+                        <option value="inspection">Inspección</option>
+                        <option value="repair">Reparación</option>
+                        <option value="other">Otro</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Título</label>
+                    <input type="text" id="record-title" required placeholder="Ej: Cambio de aceite sintético" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Fecha</label>
+                        <input type="date" id="record-date" required class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Costo ($)</label>
+                        <input type="number" id="record-cost" required min="0" step="0.01" placeholder="0.00" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Kilometraje</label>
+                    <input type="number" id="record-mileage" required min="0" placeholder="Ej: 45000" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Notas</label>
+                    <textarea id="record-notes" rows="2" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none"></textarea>
+                </div>
+                <button type="submit" id="btn-save-record" class="w-full bg-primary-600 text-white font-bold rounded-lg p-3 hover:bg-primary-700 transition-colors flex justify-center items-center">
+                    Guardar
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Script Principal con Supabase -->
+    <script>
+        // ¡IMPORTANTE! INGRESA TUS CREDENCIALES DE SUPABASE AQUÍ
+        const SUPABASE_URL = 'REEMPLAZA_CON_TU_SUPABASE_URL';
+        const SUPABASE_ANON_KEY = 'REEMPLAZA_CON_TU_SUPABASE_ANON_KEY';
+        
+        let supabase = null;
+        let cars = [];
+        let records = [];
+        let currentTab = 'cars';
+        let currentCarFilter = 'all';
+
+        const MAINT_TYPES = {
+            oil_change: { label: 'Cambio de Aceite', icon: 'fa-droplet', color: 'text-yellow-600', bg: 'bg-yellow-100' },
+            tire_rotation: { label: 'Rotación Llantas', icon: 'fa-truck-monster', color: 'text-slate-600', bg: 'bg-slate-200' },
+            brake_service: { label: 'Frenos', icon: 'fa-circle-stop', color: 'text-red-600', bg: 'bg-red-100' },
+            battery: { label: 'Batería', icon: 'fa-car-battery', color: 'text-green-600', bg: 'bg-green-100' },
+            filter_change: { label: 'Filtros', icon: 'fa-filter', color: 'text-blue-600', bg: 'bg-blue-100' },
+            inspection: { label: 'Inspección', icon: 'fa-magnifying-glass', color: 'text-purple-600', bg: 'bg-purple-100' },
+            repair: { label: 'Reparación', icon: 'fa-wrench', color: 'text-orange-600', bg: 'bg-orange-100' },
+            other: { label: 'Otro', icon: 'fa-clipboard', color: 'text-gray-600', bg: 'bg-gray-100' }
+        };
+
+        // --- INICIALIZACIÓN ---
+        async function init() {
+            if (SUPABASE_URL === 'REEMPLAZA_CON_TU_SUPABASE_URL') {
+                document.getElementById('loader-text').innerHTML = `
+                    <span class="text-red-500 block mb-2 font-bold">¡Faltan credenciales!</span>
+                    Abre index.html y coloca tu URL y ANON KEY de Supabase.
+                `;
+                return;
+            }
+
+            try {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                await loadData();
+                document.getElementById('loader').style.display = 'none';
+                switchTab('cars');
+            } catch (err) {
+                console.error(err);
+                document.getElementById('loader-text').innerText = "Error al conectar con Supabase.";
+            }
+        }
+
+        async function loadData() {
+            const [carsRes, recordsRes] = await Promise.all([
+                supabase.from('cars').select('*').order('created_at', { ascending: true }),
+                supabase.from('maintenance_records').select('*').order('date', { ascending: false })
+            ]);
+            
+            if (carsRes.error) console.error(carsRes.error);
+            if (recordsRes.error) console.error(recordsRes.error);
+            
+            cars = carsRes.data || [];
+            records = recordsRes.data || [];
+            
+            if(currentTab === 'cars') renderCars();
+            if(currentTab === 'maintenance') renderRecords();
+            if(currentTab === 'oil') renderOilTab();
+        }
+
+        // --- NAVEGACIÓN ---
+        function switchTab(tabId) {
+            currentTab = tabId;
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${tabId}`).classList.add('active');
+            
+            document.querySelectorAll('nav button').forEach(el => {
+                el.classList.remove('text-primary-600');
+                el.classList.add('text-slate-400');
+            });
+            document.getElementById(`tab-btn-${tabId}`).classList.remove('text-slate-400');
+            document.getElementById(`tab-btn-${tabId}`).classList.add('text-primary-600');
+
+            const headerStats = document.getElementById('header-stats');
+            if (tabId === 'maintenance') {
+                headerStats.classList.remove('hidden');
+                renderRecords();
+            } else {
+                headerStats.classList.add('hidden');
+            }
+            if (tabId === 'cars') renderCars();
+            if (tabId === 'oil') renderOilTab();
+        }
+
+        function formatDate(dStr) {
+            if (!dStr) return '';
+            const [y, m, d] = dStr.split('-');
+            return `${d}/${m}/${y}`;
+        }
+
+        // --- VEHÍCULOS ---
+        function renderCars() {
+            const container = document.getElementById('cars-container');
+            container.innerHTML = '';
+            
+            if (cars.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-slate-500 mt-10 py-10 bg-white rounded-xl shadow-sm border border-slate-100">
+                        <i class="fa-solid fa-car text-4xl mb-3 text-slate-300"></i>
+                        <p class="font-medium">No hay vehículos registrados.</p>
+                    </div>`;
+                return;
+            }
+
+            cars.forEach(car => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-xl shadow-sm p-4 border border-slate-100 flex flex-col relative';
+                card.innerHTML = `
+                    <div class="absolute top-4 right-4 flex space-x-2">
+                        <button onclick="editCar('${car.id}')" class="w-8 h-8 rounded-full bg-slate-50 text-slate-500 hover:text-primary-600 flex items-center justify-center transition-colors"><i class="fa-solid fa-pen text-sm"></i></button>
+                        <button onclick="deleteCar('${car.id}')" class="w-8 h-8 rounded-full bg-slate-50 text-slate-500 hover:text-red-600 flex items-center justify-center transition-colors"><i class="fa-solid fa-trash text-sm"></i></button>
+                    </div>
+                    
+                    <div class="flex items-center mb-3">
+                        <div class="w-12 h-12 bg-primary-50 rounded-full flex items-center justify-center text-primary-600 mr-4">
+                            <i class="fa-solid fa-car-side text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-lg text-slate-800">${car.name}</h3>
+                            <p class="text-xs text-slate-500">${car.make || 'Sin marca'} ${car.model || ''} • ${car.year || ''}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="bg-slate-50 p-2 rounded-lg">
+                            <span class="block text-xs text-slate-400">Placa</span>
+                            <span class="font-medium text-slate-700">${car.license_plate || '-'}</span>
+                        </div>
+                        <div class="bg-slate-50 p-2 rounded-lg">
+                            <span class="block text-xs text-slate-400">Kilometraje</span>
+                            <span class="font-medium text-slate-700">${car.current_mileage ? car.current_mileage + ' km' : '-'}</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function openCarModal() {
+            document.getElementById('car-form').reset();
+            document.getElementById('car-id').value = '';
+            document.getElementById('car-modal-title').innerText = "Nuevo Vehículo";
+            document.getElementById('car-modal').classList.add('active');
+        }
+        
+        function editCar(id) {
+            const car = cars.find(c => c.id === id);
+            if (!car) return;
+            document.getElementById('car-id').value = car.id;
+            document.getElementById('car-name').value = car.name;
+            document.getElementById('car-make').value = car.make || '';
+            document.getElementById('car-model').value = car.model || '';
+            document.getElementById('car-year').value = car.year || '';
+            document.getElementById('car-plate').value = car.license_plate || '';
+            document.getElementById('car-mileage').value = car.current_mileage || '';
+            document.getElementById('car-interval').value = car.oil_change_interval || 5000;
+            
+            document.getElementById('car-modal-title').innerText = "Editar Vehículo";
+            document.getElementById('car-modal').classList.add('active');
+        }
+
+        async function saveCar(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-save-car');
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+            btn.disabled = true;
+
+            const id = document.getElementById('car-id').value;
+            const newCar = {
+                name: document.getElementById('car-name').value,
+                make: document.getElementById('car-make').value || null,
+                model: document.getElementById('car-model').value || null,
+                year: document.getElementById('car-year').value ? parseInt(document.getElementById('car-year').value) : null,
+                license_plate: document.getElementById('car-plate').value || null,
+                current_mileage: document.getElementById('car-mileage').value ? parseInt(document.getElementById('car-mileage').value) : null,
+                oil_change_interval: parseInt(document.getElementById('car-interval').value) || 5000
+            };
+
+            if (id) {
+                await supabase.from('cars').update(newCar).eq('id', id);
+            } else {
+                await supabase.from('cars').insert(newCar);
+            }
+            
+            await loadData();
+            btn.innerHTML = 'Guardar';
+            btn.disabled = false;
+            closeModal('car-modal');
+        }
+
+        async function deleteCar(id) {
+            if(confirm("¿Seguro que deseas eliminar este vehículo y todos sus mantenimientos?")) {
+                await supabase.from('cars').delete().eq('id', id);
+                await loadData();
+            }
+        }
+
+        // --- MANTENIMIENTOS ---
+        function renderFilters() {
+            const container = document.getElementById('car-filters');
+            container.innerHTML = `
+                <button onclick="setCarFilter('all')" class="whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-colors ${currentCarFilter === 'all' ? 'bg-primary-600 text-white' : 'bg-white border border-slate-200 text-slate-600'}">
+                    Todos
+                </button>
+            `;
+            cars.forEach(car => {
+                const btn = document.createElement('button');
+                btn.className = `whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-colors ${currentCarFilter === car.id ? 'bg-primary-600 text-white' : 'bg-white border border-slate-200 text-slate-600'}`;
+                btn.innerText = car.name;
+                btn.onclick = () => setCarFilter(car.id);
+                container.appendChild(btn);
+            });
+        }
+
+        function setCarFilter(id) {
+            currentCarFilter = id;
+            renderFilters();
+            renderRecords();
+        }
+
+        function renderRecords() {
+            renderFilters();
+            const container = document.getElementById('records-container');
+            container.innerHTML = '';
+            let total = 0;
+
+            const filteredRecords = currentCarFilter === 'all' ? records : records.filter(r => r.car_id === currentCarFilter);
+            
+            if (filteredRecords.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-slate-500 mt-10 py-10 bg-white rounded-xl shadow-sm border border-slate-100">
+                        <i class="fa-solid fa-clipboard-list text-4xl mb-3 text-slate-300"></i>
+                        <p class="font-medium">No hay mantenimientos.</p>
+                    </div>`;
+                document.getElementById('total-cost').innerText = '0.00';
+                return;
+            }
+
+            filteredRecords.forEach(record => {
+                total += parseFloat(record.cost || 0);
+                const car = cars.find(c => c.id === record.car_id);
+                const carName = car ? car.name : 'Desconocido';
+                const typeInfo = MAINT_TYPES[record.type] || MAINT_TYPES['other'];
+
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-xl shadow-sm p-4 border border-slate-100';
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 ${typeInfo.bg} ${typeInfo.color} rounded-full flex items-center justify-center mr-3">
+                                <i class="fa-solid ${typeInfo.icon}"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-slate-800 leading-tight">${record.title}</h3>
+                                <p class="text-xs text-slate-500">${carName} • <span class="${typeInfo.color} font-medium">${typeInfo.label}</span></p>
+                            </div>
+                        </div>
+                        <span class="font-bold text-slate-800 text-lg">$${Number(record.cost || 0).toFixed(2)}</span>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2 text-xs text-slate-600 mb-3 mt-3">
+                        <div class="bg-slate-50 px-2 py-1 rounded flex items-center">
+                            <i class="fa-regular fa-calendar mr-1.5 text-slate-400"></i> ${formatDate(record.date)}
+                        </div>
+                        <div class="bg-slate-50 px-2 py-1 rounded flex items-center">
+                            <i class="fa-solid fa-gauge mr-1.5 text-slate-400"></i> ${record.mileage} km
+                        </div>
+                    </div>
+                    
+                    ${record.notes ? `<p class="text-sm text-slate-600 bg-slate-50 p-2 rounded-lg mb-3 border border-slate-100">${record.notes}</p>` : ''}
+                    
+                    <div class="flex justify-end space-x-3 border-t pt-3 border-slate-100">
+                        <button onclick="editRecord('${record.id}')" class="text-sm text-primary-600 font-medium hover:text-primary-700 flex items-center">
+                            <i class="fa-solid fa-pen mr-1"></i> Editar
+                        </button>
+                        <button onclick="deleteRecord('${record.id}')" class="text-sm text-red-500 font-medium hover:text-red-600 flex items-center">
+                            <i class="fa-solid fa-trash mr-1"></i> Borrar
+                        </button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            document.getElementById('total-cost').innerText = total.toFixed(2);
+        }
+
+        function openRecordModal() {
+            if(cars.length === 0) {
+                alert("Primero debes registrar un vehículo.");
+                switchTab('cars');
+                return;
+            }
+            
+            const form = document.getElementById('record-form');
+            form.reset();
+            
+            const carSelect = document.getElementById('record-car');
+            carSelect.innerHTML = '';
+            cars.forEach(car => {
+                const opt = document.createElement('option');
+                opt.value = car.id;
+                opt.innerText = car.name;
+                carSelect.appendChild(opt);
+            });
+
+            if (currentCarFilter !== 'all') carSelect.value = currentCarFilter;
+
+            document.getElementById('record-id').value = '';
+            document.getElementById('record-date').valueAsDate = new Date();
+            document.getElementById('record-modal-title').innerText = "Nuevo Mantenimiento";
+            document.getElementById('record-modal').classList.add('active');
+        }
+
+        function editRecord(id) {
+            const record = records.find(r => r.id === id);
+            if (!record) return;
+
+            const carSelect = document.getElementById('record-car');
+            carSelect.innerHTML = '';
+            cars.forEach(car => {
+                const opt = document.createElement('option');
+                opt.value = car.id;
+                opt.innerText = car.name;
+                carSelect.appendChild(opt);
+            });
+
+            document.getElementById('record-id').value = record.id;
+            document.getElementById('record-car').value = record.car_id;
+            document.getElementById('record-type').value = record.type;
+            document.getElementById('record-title').value = record.title;
+            document.getElementById('record-date').value = record.date;
+            document.getElementById('record-cost').value = record.cost;
+            document.getElementById('record-mileage').value = record.mileage;
+            document.getElementById('record-notes').value = record.notes || '';
+            
+            document.getElementById('record-modal-title').innerText = "Editar Mantenimiento";
+            document.getElementById('record-modal').classList.add('active');
+        }
+
+        async function saveRecord(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-save-record');
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+            btn.disabled = true;
+
+            const id = document.getElementById('record-id').value;
+            const carId = document.getElementById('record-car').value;
+            
+            const newRecord = {
+                car_id: carId,
+                type: document.getElementById('record-type').value,
+                title: document.getElementById('record-title').value,
+                date: document.getElementById('record-date').value,
+                cost: parseFloat(document.getElementById('record-cost').value),
+                mileage: parseInt(document.getElementById('record-mileage').value),
+                notes: document.getElementById('record-notes').value || null
+            };
+
+            if (id) {
+                await supabase.from('maintenance_records').update(newRecord).eq('id', id);
+            } else {
+                await supabase.from('maintenance_records').insert(newRecord);
+            }
+
+            // Actualizar kilometraje del carro si es mayor
+            const car = cars.find(c => c.id === carId);
+            if(car && newRecord.mileage > (car.current_mileage || 0)) {
+                await supabase.from('cars').update({ current_mileage: newRecord.mileage }).eq('id', carId);
+            }
+
+            await loadData();
+            btn.innerHTML = 'Guardar';
+            btn.disabled = false;
+            closeModal('record-modal');
+        }
+
+        async function deleteRecord(id) {
+            if(confirm("¿Borrar este mantenimiento?")) {
+                await supabase.from('maintenance_records').delete().eq('id', id);
+                await loadData();
+            }
+        }
+
+        // --- ACEITE ---
+        function renderOilTab() {
+            const select = document.getElementById('oil-car-select');
+            select.innerHTML = '';
+            
+            if (cars.length === 0) {
+                document.getElementById('oil-calculator-content').innerHTML = `
+                    <div class="text-center text-slate-500 py-10 bg-white rounded-xl shadow-sm border border-slate-100">
+                        <p>No hay vehículos registrados.</p>
+                    </div>`;
+                return;
+            }
+
+            cars.forEach(car => {
+                const opt = document.createElement('option');
+                opt.value = car.id;
+                opt.innerText = car.name;
+                select.appendChild(opt);
+            });
+            renderOilCalculator();
+        }
+
+        function renderOilCalculator() {
+            const carId = document.getElementById('oil-car-select').value;
+            const car = cars.find(c => c.id === carId);
+            const content = document.getElementById('oil-calculator-content');
+            
+            if (!car) return;
+
+            const oilRecords = records.filter(r => r.car_id === carId && r.type === 'oil_change');
+            const lastOilChange = oilRecords[0]; // Ya vienen ordenados por fecha
+
+            if (!lastOilChange) {
+                content.innerHTML = `
+                    <div class="bg-white rounded-xl p-6 text-center border border-slate-100 shadow-sm">
+                        <div class="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                            <i class="fa-solid fa-droplet"></i>
+                        </div>
+                        <h3 class="font-bold text-lg mb-2">Sin registros de aceite</h3>
+                        <p class="text-slate-500 text-sm mb-4">No has registrado ningún cambio de aceite.</p>
+                        <button onclick="switchTab('maintenance'); setTimeout(openRecordModal, 100);" class="bg-primary-600 text-white px-4 py-2 rounded-lg font-medium text-sm">
+                            Registrar Cambio de Aceite
+                        </button>
+                    </div>`;
+                return;
+            }
+
+            const lastMileage = parseInt(lastOilChange.mileage) || 0;
+            const currentMileage = parseInt(car.current_mileage) || lastMileage;
+            const interval = parseInt(car.oil_change_interval) || 5000;
+            
+            const nextDue = lastMileage + interval;
+            const remaining = nextDue - currentMileage;
+            
+            let progress = ((currentMileage - lastMileage) / interval) * 100;
+            progress = Math.max(0, Math.min(100, progress));
+
+            let statusColor = 'text-green-600';
+            let bgProgress = 'bg-green-500';
+            let message = 'Todo en orden';
+
+            if (remaining <= 500 && remaining > 0) {
+                statusColor = 'text-yellow-600';
+                bgProgress = 'bg-yellow-500';
+                message = 'Cambio de aceite próximo';
+            } else if (remaining <= 0) {
+                statusColor = 'text-red-600';
+                bgProgress = 'bg-red-500';
+                message = 'Cambio de aceite vencido';
+            }
+
+            content.innerHTML = `
+                <div class="bg-white rounded-xl p-5 border border-slate-100 shadow-sm mb-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-lg">Estado del Aceite</h3>
+                        <span class="${statusColor} font-bold text-sm bg-slate-50 px-3 py-1 rounded-full">${message}</span>
+                    </div>
+                    <div class="mb-6">
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-slate-500">Último cambio</span>
+                            <span class="font-medium">${lastMileage} km</span>
+                        </div>
+                        <div class="h-4 bg-slate-100 rounded-full overflow-hidden relative">
+                            <div class="h-full ${bgProgress} transition-all duration-1000 ease-out" style="width: ${progress}%"></div>
+                        </div>
+                        <div class="flex justify-between text-sm mt-2">
+                            <span class="font-medium text-primary-600">${currentMileage} km (Actual)</span>
+                            <span class="text-slate-500">Próximo: ${nextDue} km</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="bg-slate-50 p-3 rounded-lg text-center">
+                            <span class="block text-xs text-slate-500 mb-1">Restante</span>
+                            <span class="font-bold text-lg ${statusColor}">${Math.abs(remaining)} km</span>
+                            <span class="block text-xs text-slate-500">${remaining < 0 ? 'Vencido por' : 'Para cambio'}</span>
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded-lg text-center">
+                            <span class="block text-xs text-slate-500 mb-1">Intervalo</span>
+                            <span class="font-bold text-lg text-slate-800">${interval} km</span>
+                            <span class="block text-xs text-slate-500">Recomendado</span>
+                        </div>
+                    </div>
+                    <div class="border-t border-slate-100 pt-4 mt-2">
+                        <p class="text-xs text-slate-500 text-center mb-3">Último registro: ${formatDate(lastOilChange.date)}</p>
+                        <button onclick="updateMileagePrompt('${car.id}')" class="w-full bg-slate-100 text-slate-700 font-medium py-2 rounded-lg hover:bg-slate-200 transition-colors mb-2">
+                            Actualizar Kilometraje Actual
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function updateMileagePrompt(carId) {
+            const car = cars.find(c => c.id === carId);
+            if(!car) return;
+            const newMileage = prompt(`Ingresa el kilometraje actual de ${car.name}:`, car.current_mileage || '');
+            if(newMileage && !isNaN(newMileage)) {
+                await supabase.from('cars').update({ current_mileage: parseInt(newMileage) }).eq('id', carId);
+                await loadData();
+            }
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+
+        // Ejecutar inicialización
+        window.onload = init;
+    </script>
+</body>
+</html>
