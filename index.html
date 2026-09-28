@@ -274,21 +274,24 @@
             try {
                 supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 
-                // Check current session
-                const { data: { session: currentSession } } = await supabase.auth.getSession();
-                session = currentSession;
-                
-                // Listen for auth changes
+                // Listen for auth changes FIRST before checking session
                 supabase.auth.onAuthStateChange((_event, newSession) => {
                     session = newSession;
+                    document.getElementById('loader').style.display = 'none';
                     handleAuthChange();
                 });
-                
-                await handleAuthChange();
+
+                // Check current session
+                const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+                if (error) throw error;
+                session = currentSession;
+
                 document.getElementById('loader').style.display = 'none';
+                await handleAuthChange();
+
             } catch (err) {
                 console.error(err);
-                document.getElementById('loader-text').innerText = "Error al conectar con Supabase.";
+                document.getElementById('loader-text').innerText = "Error al conectar con Supabase: " + err.message;
             }
         }
         
@@ -300,13 +303,20 @@
                 switchTab('cars');
             } else {
                 document.getElementById('btn-logout').classList.add('hidden');
-                switchTab('login');
-                // Ensure login view is active
+                // Ocultar todas las vistas y mostrar solo login
+                document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
                 document.getElementById('view-login').classList.add('active');
             }
         }
         
         async function loginWithGithub() {
+            if (!supabase) {
+                alert('La aplicación aún está cargando. Espera un momento e intenta de nuevo.');
+                return;
+            }
+            const btn = document.querySelector('#view-login button');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Conectando...';
             try {
                 const { error } = await supabase.auth.signInWithOAuth({
                     provider: 'github',
@@ -317,6 +327,8 @@
                 if (error) throw error;
             } catch (error) {
                 alert('Error al iniciar sesión: ' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-brands fa-github text-xl mr-3"></i> Continuar con GitHub';
             }
         }
         
